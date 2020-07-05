@@ -1,13 +1,19 @@
 
 import ReactDOM from 'react-dom'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import personService from './services/persons'
+import './index.css'
+
 
 
 const Persons = (props) => {
-  const name = props.list.map(person => <div key={person.number}>{person.name} {person.number}</div>)
+const person = props.list.map(person => 
+<div key={person.number}>{person.name} {person.number} 
+  <button onClick={props.handleDelete(person.id)}>delete</button>
+</div>)
   return (
     <div>
-      {name}
+      {person}
     </div>
   )
 }
@@ -40,6 +46,18 @@ const FormAddPerson = (props) => {
   )
 }
 
+const Message = ({ message, className }) => {
+  if (message === null) {
+    return null
+  }
+
+  return (
+    <div className={className}>
+      {message}
+    </div>
+  )
+}
+
 const App = () => {
   const list = [
     {
@@ -53,6 +71,18 @@ const App = () => {
   const [ newName, setNewName ] = useState('')
   const [ newNumber, setNewNumber ] = useState('')
   const [ newFilter, setNewFilter ] = useState('')
+  const [successMessage, setSuccessMessage] = useState(null)
+  const [failMessage, setFailMessage] = useState(null)
+
+  useEffect(() => {
+    personService
+      .getAll()
+      .then(response => {
+        setPersons(response.data)
+        setShownPersons(response.data)
+      })
+  }, [])
+
 
   const handleNameChange = (event) => {
     setNewName(event.target.value)
@@ -69,29 +99,96 @@ const App = () => {
     else setShownPersons([ ...persons.filter(person => person.name.includes(event.target.value)) ])
   }
 
+
+  const handleDelete = (id) => () => {
+    const deletePerson = shownPersons.find(person => person.id === id)
+
+    personService
+    .delete(id)
+    .then(() => {
+      setSuccessMessage(`Deleted ${deletePerson.name}`)
+      setPersons([ ...persons.filter(person => person.id !== id) ])
+      setShownPersons([ ...persons.filter(person => person.id !== id)])
+      setTimeout(() => {
+        setSuccessMessage(null)
+      },5000)
+      setNewNumber('')
+      setNewName('')
+    })
+  }
+
   const addPerson = (event) => {
     event.preventDefault()
     const personObject = {
       name: newName,
       number: newNumber,
     }
-    const newPersons = [ ...persons, personObject ]
 
-    if (!persons.map(person => person.name).includes(newName)){
-      setPersons(newPersons)
-      setNewNumber('')
-      setNewName('')
+    if (!persons.map(person => person.name).includes(newName)) {
+
+      personService
+      .create(personObject)
+      .then(response => {
+        const newPersons = [ ...persons, response.data ]
+        setPersons(newPersons)
+        setSuccessMessage('Added '+newName)
+
+        if (newFilter.length === 0) setShownPersons(newPersons)
+        else setShownPersons([ ...newPersons.filter(person => person.name.includes(newFilter)) ])
+
+        setTimeout(() => {
+          setSuccessMessage(null)
+        },5000)
+        setNewNumber('')
+        setNewName('')
+      })
+
+
     } else {
-      window.alert('name is already included')
-    }
+      const replace = window.confirm('name is already added to phonebook, replace the number with new one?')
+      if (replace) {
+        const updatedPerson = {
+          ...persons.find(person => person.name === newName),
+          number: newNumber
+        }
+        const updatedPersons = [ ...persons.filter(person => person.id !== updatedPerson.id), updatedPerson ]
 
-    if (newFilter.length === 0) setShownPersons(newPersons)
-    else setShownPersons([ ...newPersons.filter(person => person.name.includes(newFilter)) ])
+        personService.update(
+          updatedPerson.id, updatedPerson
+        ).then(() => {
+          setPersons(updatedPersons)
+          setSuccessMessage('Changed number of '+newName)
+          setTimeout(() => {
+            setSuccessMessage(null)
+          },5000)
+          setNewNumber('')
+          setNewName('')
+        })
+        .catch(error => {
+          setFailMessage(`${newName} is already deleted`)
+          setTimeout(() => {
+            setFailMessage(null)
+          },5000)
+          setPersons([ ...persons.filter(person => person.id !== updatedPerson.id) ])
+          setShownPersons([ ...persons.filter(person => person.id !== updatedPerson.id)])
+          setNewNumber('')
+          setNewName('')
+
+        })
+
+        if (newFilter.length === 0) setShownPersons(updatedPersons)
+        else setShownPersons([ ...updatedPersons.filter(person => person.name.includes(newFilter)) ])
+
+        }
+    }
   }
 
   return (
     <div>
       <h2>Phonebook</h2>
+      <Message message={successMessage} className='success' />
+      <Message message={failMessage} className='fail' />
+
       <div>
         <Input text='find name' value={newFilter} onChange={handleFilterChange}/>
       </div>
@@ -102,7 +199,7 @@ const App = () => {
           newNumber={newNumber} 
           handleNumberChange={handleNumberChange}/>
       <h3>Numbers</h3>
-      <Persons list={shownPersons}/>
+      <Persons list={shownPersons} handleDelete={handleDelete}/>
     </div>
   )
 
